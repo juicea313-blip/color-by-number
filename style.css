@@ -1,0 +1,28 @@
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  background: #f7f7f7;
+}
+
+#controls {
+  margin: 20px;
+}
+
+#palette {
+  display: flex;
+  justify-content: center;
+  margin: 10px;
+  gap: 10px;
+}
+
+.color-swatch {
+  width: 40px;
+  height: 40px;
+  border: 2px solid black;
+  cursor: pointer;
+}
+
+#canvas {
+  margin-top: 20px;
+  border: 2px solid black;
+}
