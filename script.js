@@ -2,16 +2,20 @@ const uploadInput = document.getElementById("upload");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const paletteDiv = document.getElementById("palette");
+const colorSlider = document.getElementById("colorSlider");
+const colorCountInput = document.getElementById("colorCount");
+const revealToggle = document.getElementById("revealToggle");
+const createOutlineBtn = document.getElementById("createOutline");
+
 let currentColor = null;
 let imageData = null;
+let originalImage = null;
 let userProgress = {};
+let numColors = 6;
 
+// --- Upload + store original image ---
 uploadInput.addEventListener("change", handleUpload);
-document.getElementById("save").addEventListener("click", saveProgress);
-document.getElementById("load").addEventListener("click", loadProgress);
-document.getElementById("download").addEventListener("click", downloadImage);
 
-// --- Step 1: Upload + Draw Image ---
 function handleUpload(e) {
   const file = e.target.files[0];
   const reader = new FileReader();
@@ -23,10 +27,8 @@ function handleUpload(e) {
       canvas.height = img.height;
       ctx.drawImage(img, 0, 0);
 
-      // Convert to "posterized" fake paint-by-number style
+      originalImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
       imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      posterizeImage();
-      extractPalette();
     };
     img.src = event.target.result;
   };
@@ -34,7 +36,29 @@ function handleUpload(e) {
   reader.readAsDataURL(file);
 }
 
-// --- Step 2: Posterize image (reduce colors) ---
+// --- Sync slider and text input ---
+colorSlider.addEventListener("input", () => {
+  numColors = parseInt(colorSlider.value);
+  colorCountInput.value = numColors;
+});
+
+colorCountInput.addEventListener("input", () => {
+  numColors = parseInt(colorCountInput.value);
+  colorSlider.value = numColors;
+});
+
+// --- Create outline on demand ---
+createOutlineBtn.addEventListener("click", () => {
+  if (!originalImage) {
+    alert("Please upload an image first.");
+    return;
+  }
+  imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  posterizeImage(numColors);
+  extractPalette();
+});
+
+// --- Posterize image (reduce colors) ---
 function posterizeImage(levels = 6) {
   for (let i = 0; i < imageData.data.length; i += 4) {
     imageData.data[i] = Math.floor(imageData.data[i] / (256 / levels)) * (256 / levels);
@@ -44,7 +68,7 @@ function posterizeImage(levels = 6) {
   ctx.putImageData(imageData, 0, 0);
 }
 
-// --- Step 3: Extract palette from image ---
+// --- Extract palette from posterized image ---
 function extractPalette() {
   let colors = new Set();
   for (let i = 0; i < imageData.data.length; i += 4) {
@@ -61,9 +85,8 @@ function extractPalette() {
   });
 }
 
-// --- Step 4: Color regions ---
+// --- Coloring interaction ---
 canvas.addEventListener("click", function(e) {
-  if (!currentColor) return;
   const rect = canvas.getBoundingClientRect();
   const x = Math.floor(e.clientX - rect.left);
   const y = Math.floor(e.clientY - rect.top);
@@ -72,41 +95,52 @@ canvas.addEventListener("click", function(e) {
   const targetColor = `rgb(${imageData.data[index]},${imageData.data[index+1]},${imageData.data[index+2]})`;
 
   if (!userProgress[targetColor]) userProgress[targetColor] = [];
-  userProgress[targetColor].push([x, y]);
 
-  // Darken clicked pixel for visual feedback
-  ctx.fillStyle = currentColor;
-  ctx.fillRect(x, y, 1, 1);
+  if (revealToggle.checked) {
+    // Reveal mode → show original image section
+    const r = originalImage.data[index];
+    const g = originalImage.data[index+1];
+    const b = originalImage.data[index+2];
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillRect(x, y, 1, 1);
+    userProgress[targetColor].push([x, y, r, g, b]);
+  } else {
+    if (!currentColor) return;
+    ctx.fillStyle = currentColor;
+    ctx.fillRect(x, y, 1, 1);
+    userProgress[targetColor].push([x, y, ...currentColor.match(/\d+/g).map(Number)]);
+  }
 });
 
-// --- Step 5: Save/Load Progress ---
-function saveProgress() {
+// --- Save/Load Progress ---
+document.getElementById("save").addEventListener("click", () => {
   localStorage.setItem("colorByNumberProgress", JSON.stringify(userProgress));
   alert("Progress saved!");
-}
+});
 
-function loadProgress() {
+document.getElementById("load").addEventListener("click", () => {
   const saved = localStorage.getItem("colorByNumberProgress");
   if (saved) {
     userProgress = JSON.parse(saved);
     redrawProgress();
     alert("Progress loaded!");
   }
-}
+});
 
 function redrawProgress() {
+  ctx.putImageData(imageData, 0, 0); // reset to posterized outline
   for (let color in userProgress) {
-    ctx.fillStyle = color;
-    userProgress[color].forEach(([x, y]) => {
+    userProgress[color].forEach(([x, y, r, g, b]) => {
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
       ctx.fillRect(x, y, 1, 1);
     });
   }
 }
 
-// --- Step 6: Download Final ---
-function downloadImage() {
+// --- Download Final ---
+document.getElementById("download").addEventListener("click", () => {
   const link = document.createElement("a");
   link.download = "color-by-number.png";
   link.href = canvas.toDataURL();
   link.click();
-}
+});
